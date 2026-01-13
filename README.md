@@ -1,6 +1,6 @@
 # processBAM Pipeline
 
-A self-contained BAM processing pipeline for TMSP and CEBPA/CEBNX panels. This pipeline automates QC statistics, coverage depth calculation, and Pindel breakpoint analysis for FLT3 and CALR genes.
+A fully self-contained BAM processing pipeline for TMSP and CEBPA/CEBNX panels. This pipeline automates QC statistics, coverage depth calculation, and Pindel breakpoint analysis for FLT3 and CALR genes.
 
 ## Overview
 
@@ -9,15 +9,13 @@ This pipeline:
 - Calculates coverage depth with cross-validation statistics
 - Detects FLT3 (chr13) and CALR (chr19) breakpoints using Pindel
 - Generates Excel reports for QC and coverage data
+- **Fully self-contained** - all Excel writing functions integrated (no external scripts)
 
 ## Directory Structure
 
 ```
 processBAM/
-├── processBAM.sh              # Main pipeline script
-├── write2WStoXLS.pl           # Excel writer (2 worksheets)
-├── writeTMSPDepthtoXLS.pl     # TMSP coverage Excel writer
-├── writeCEBNXDepthtoXLS.pl    # CEBNX coverage Excel writer
+├── processBAM.sh              # Main pipeline script (self-contained)
 └── README.md                  # This file
 ```
 
@@ -38,10 +36,10 @@ The following tools must be installed (available via conda):
 | parallel | GNU Parallel for job distribution |
 | transpose | Text transpose utility |
 
-### Perl Modules
+### Python Modules
 
 ```bash
-cpan install Excel::Writer::XLSX
+pip install openpyxl
 ```
 
 ### Reference Files
@@ -194,6 +192,30 @@ Per-sample VCF files for structural variants:
 3. Converts output to VCF using `pindel2vcf`
 4. Stores intermediate files in `pindel/` directory
 
+## Integrated Functions
+
+The following functions are built into the script (no external dependencies):
+
+### Excel Writing
+- `write_2ws_to_xlsx` - Creates Excel file with 2 worksheets from TSV files
+- `write_1ws_to_xlsx` - Creates Excel file with 1 worksheet from TSV file
+- Uses Python with openpyxl (automatically handles numeric conversion)
+
+### QC Processing
+- `run_picard_qc` - Runs Picard metrics for a single sample
+- `run_mosdepth` - Runs mosdepth coverage for a single sample
+- `generate_qc_data` - Orchestrates QC for all samples
+
+### Coverage Processing
+- `calculate_tmsp_depth` - Calculates TMSP coverage with cross-validation
+- `calculate_cebnx_depth` - Calculates CEBNX coverage with cross-validation
+- `generate_coverage_data` - Orchestrates coverage for all samples
+
+### Pindel Processing
+- `run_pindel_flt3` - Runs Pindel for FLT3 gene
+- `run_pindel_calr` - Runs Pindel for CALR gene
+- `run_pindel_analysis` - Orchestrates Pindel for all samples
+
 ## Checkpoint System
 
 The pipeline automatically detects completed stages:
@@ -215,10 +237,14 @@ Use `--status` to view completion status, `--force` to re-run completed stages.
 1. **Conda not found**: Ensure conda is installed at `$HOME/Software/miniconda3/`
 2. **VCF not found**: QC stage requires matching VCF files in `../vcf/`
 3. **Missing tools**: Install required tools via conda: `conda install samtools picard mosdepth pindel`
-4. **Excel::Writer::XLSX missing**: Run `cpan install Excel::Writer::XLSX`
+4. **openpyxl missing**: Run `pip install openpyxl`
 
 ## Version History
 
+- v1.1 (2025-01): Self-contained Excel writers
+  - Integrated Excel writing functions using Python/openpyxl
+  - Removed external Perl script dependencies
+  - Single-file deployment
 - v1.0 (2025-01): Initial release
   - Picard and mosdepth QC metrics
   - Coverage depth with cross-validation

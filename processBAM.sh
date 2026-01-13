@@ -63,6 +63,93 @@ activate_conda() {
 }
 
 # =============================================================================
+# EXCEL WRITING FUNCTIONS (Integrated - no external scripts needed)
+# =============================================================================
+# These functions use Python with openpyxl to write Excel files
+
+# Write two worksheets to Excel
+# Usage: write_2ws_to_xlsx <output.xlsx> <ws1_name> <ws1_file> <ws2_name> <ws2_file>
+write_2ws_to_xlsx() {
+    local output_file="$1"
+    local ws1_name="$2"
+    local ws1_file="$3"
+    local ws2_name="$4"
+    local ws2_file="$5"
+
+    python3 << PYTHON_EOF
+import openpyxl
+from openpyxl import Workbook
+
+wb = Workbook()
+
+# First worksheet
+ws1 = wb.active
+ws1.title = "${ws1_name}"
+with open("${ws1_file}", 'r') as f:
+    for row_idx, line in enumerate(f, 1):
+        fields = line.rstrip('\n').split('\t')
+        for col_idx, value in enumerate(fields, 1):
+            # Try to convert to number if possible
+            try:
+                if '.' in value:
+                    ws1.cell(row=row_idx, column=col_idx, value=float(value))
+                else:
+                    ws1.cell(row=row_idx, column=col_idx, value=int(value))
+            except ValueError:
+                ws1.cell(row=row_idx, column=col_idx, value=value)
+
+# Second worksheet
+ws2 = wb.create_sheet(title="${ws2_name}")
+with open("${ws2_file}", 'r') as f:
+    for row_idx, line in enumerate(f, 1):
+        fields = line.rstrip('\n').split('\t')
+        for col_idx, value in enumerate(fields, 1):
+            try:
+                if '.' in value:
+                    ws2.cell(row=row_idx, column=col_idx, value=float(value))
+                else:
+                    ws2.cell(row=row_idx, column=col_idx, value=int(value))
+            except ValueError:
+                ws2.cell(row=row_idx, column=col_idx, value=value)
+
+wb.save("${output_file}")
+print(f"Created ${output_file}")
+PYTHON_EOF
+}
+
+# Write single worksheet to Excel
+# Usage: write_1ws_to_xlsx <output.xlsx> <ws_name> <data_file>
+write_1ws_to_xlsx() {
+    local output_file="$1"
+    local ws_name="$2"
+    local data_file="$3"
+
+    python3 << PYTHON_EOF
+import openpyxl
+from openpyxl import Workbook
+
+wb = Workbook()
+ws = wb.active
+ws.title = "${ws_name}"
+
+with open("${data_file}", 'r') as f:
+    for row_idx, line in enumerate(f, 1):
+        fields = line.rstrip('\n').split('\t')
+        for col_idx, value in enumerate(fields, 1):
+            try:
+                if '.' in value:
+                    ws.cell(row=row_idx, column=col_idx, value=float(value))
+                else:
+                    ws.cell(row=row_idx, column=col_idx, value=int(value))
+            except ValueError:
+                ws.cell(row=row_idx, column=col_idx, value=value)
+
+wb.save("${output_file}")
+print(f"Created ${output_file}")
+PYTHON_EOF
+}
+
+# =============================================================================
 # PICARD QC FUNCTION
 # =============================================================================
 # Runs Picard QC metrics and mosdepth for all BAM files
@@ -224,9 +311,9 @@ generate_qc_data() {
         <(paste *.mosdepth.f.txt) \
         > Mosdepth.ALL.txt
 
-    # Write to Excel
+    # Write to Excel (using integrated Python function)
     log_info "Writing QCdata.xlsx..."
-    "$SCRIPT_DIR/write2WStoXLS.pl" QCdata Picard.ALL.txt Mosdepth.ALL.txt
+    write_2ws_to_xlsx "QCdata.xlsx" "Picard.ALL" "Picard.ALL.txt" "Mosdepth.ALL" "Mosdepth.ALL.txt"
 
     # Cleanup
     rm -f *.SelectMetrics.txt *.SelectMetrics.f2.txt *.mosdepth.txt *.mosdepth.f.txt Picard.ALL.txt Mosdepth.ALL.txt
@@ -300,9 +387,9 @@ calculate_tmsp_depth() {
     [ -f Depth.TMSP.txt ] || \
     paste <(cut -f1-2 2.Depth.txt) <(paste *.results) > Depth.TMSP.txt
 
-    # Write to Excel
+    # Write to Excel (using integrated Python function)
     [ -f CoverageTMSP.xlsx ] || \
-    "$SCRIPT_DIR/writeTMSPDepthtoXLS.pl" Depth.TMSP.txt
+    write_1ws_to_xlsx "CoverageTMSP.xlsx" "Depth.TMSP" "Depth.TMSP.txt"
 
     # Cleanup
     rm -f [1-3].* *.depth
@@ -359,9 +446,9 @@ calculate_cebnx_depth() {
     [ -f Depth.CEBNX.txt ] || \
     paste <(cut -f1-2 2.Depth.txt) <(paste *.results) > Depth.CEBNX.txt
 
-    # Write to Excel
+    # Write to Excel (using integrated Python function)
     [ -f CoverageCEBNX.xlsx ] || \
-    "$SCRIPT_DIR/writeCEBNXDepthtoXLS.pl" Depth.CEBNX.txt
+    write_1ws_to_xlsx "CoverageCEBNX.xlsx" "Depth.CEBNX" "Depth.CEBNX.txt"
 
     # Cleanup
     rm -f 1.* 2.* 3.*
@@ -386,9 +473,9 @@ generate_coverage_data() {
         cp Depth.CEBNX.txt "$start_dir/"
         cd "$start_dir"
 
-        # Write combined coverage data
+        # Write combined coverage data (using integrated Python function)
         log_info "Writing CoverageData.xlsx..."
-        "$SCRIPT_DIR/write2WStoXLS.pl" CoverageData Depth.TMSP.txt Depth.CEBNX.txt
+        write_2ws_to_xlsx "CoverageData.xlsx" "Depth.TMSP" "Depth.TMSP.txt" "Depth.CEBNX" "Depth.CEBNX.txt"
 
         # Cleanup
         rm -f Depth.TMSP.txt Depth.CEBNX.txt CoverageTMSP.xlsx
@@ -610,11 +697,11 @@ main() {
                     fi
                 done
                 echo ""
-                echo "Perl modules:"
-                if perl -e "use Excel::Writer::XLSX" 2>/dev/null; then
-                    echo "  Excel::Writer::XLSX: OK"
+                echo "Python modules:"
+                if python3 -c "import openpyxl" 2>/dev/null; then
+                    echo "  openpyxl: OK"
                 else
-                    echo "  Excel::Writer::XLSX: MISSING (cpan install Excel::Writer::XLSX)"
+                    echo "  openpyxl: MISSING (pip install openpyxl)"
                 fi
                 exit 0
                 ;;
