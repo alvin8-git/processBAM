@@ -167,9 +167,9 @@ create_coverage_plot <- function(data, gene_bounds, title, x_range = NULL) {
   # Draw gene shading (background)
   draw_gene_shading(gene_bounds, x_range, y_min, y_max)
 
-  # Draw UCL and LCL as light grey dashed lines
-  lines(data$idx, data$ucl, col = COL_UCL_LCL, lty = 2, lwd = 0.8)
-  lines(data$idx, data$lcl, col = COL_UCL_LCL, lty = 2, lwd = 0.8)
+  # Draw UCL and LCL as light grey solid lines (like coverage line)
+  lines(data$idx, data$ucl, col = COL_UCL_LCL, lty = 1, lwd = 0.8)
+  lines(data$idx, data$lcl, col = COL_UCL_LCL, lty = 1, lwd = 0.8)
 
   # Draw reference line at 250x
   abline(h = 250, col = COL_REF_LINE, lty = 2, lwd = 1)
@@ -181,7 +181,7 @@ create_coverage_plot <- function(data, gene_bounds, title, x_range = NULL) {
   legend("bottomright",
          legend = c("Coverage", "UCL/LCL", "250x"),
          col = c(COL_COVERAGE, COL_UCL_LCL, COL_REF_LINE),
-         lty = c(1, 2, 2),
+         lty = c(1, 1, 2),
          lwd = c(1.5, 0.8, 1),
          cex = 0.6, bg = "white")
 
@@ -300,7 +300,7 @@ main <- function(args) {
     cat("\nGenerates coverage plot PDFs from CSV files\n")
     cat("Output: One PDF per sample with TMSP (5 pages) and CEBPA coverage\n")
     cat("\nEach plot includes:\n")
-    cat("  - Coverage (log scale, dark blue) with UCL/LCL (light grey dashed lines)\n")
+    cat("  - Coverage (log scale, dark blue) with UCL/LCL (light grey solid lines)\n")
     cat("  - Z-score subplot (pink, -2 to 2) - CNV deviation detection\n")
     cat("  - Ratio subplot (purple, 0 to 2) - coverage over mean\n")
     quit(status = 1)
