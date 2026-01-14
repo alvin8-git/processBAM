@@ -9,6 +9,7 @@ This pipeline:
 - Calculates coverage depth with cross-validation statistics
 - Detects FLT3 (chr13) and CALR (chr19) breakpoints using Pindel
 - Generates Excel reports for QC and coverage data
+- **Generates coverage plot PDFs** with alternating gene shading (using R)
 - **Fully self-contained** - all Excel writing functions integrated (no external scripts)
 
 ## Directory Structure
@@ -16,6 +17,8 @@ This pipeline:
 ```
 processBAM/
 ├── processBAM.sh              # Main pipeline script (self-contained)
+├── generateCoveragePlots.sh   # Coverage plot generation wrapper
+├── plotCoverage.R             # R script for coverage plot generation
 └── README.md                  # This file
 ```
 
@@ -96,6 +99,7 @@ Pipeline Stages:
   1. QC        - Run Picard and mosdepth QC metrics
   2. Coverage  - Calculate coverage depth with cross-validation
   3. Pindel    - Detect FLT3 and CALR breakpoints
+  4. Plots     - Generate coverage plots with gene shading
 
 Options:
   (no options)    Run all stages (skip completed stages)
@@ -103,6 +107,7 @@ Options:
   --qc            Run QC stage only
   --coverage      Run coverage stage only
   --pindel        Run Pindel stage only
+  --plots         Run coverage plot generation only
   --force, -f     Force re-run even if stage is complete
   --check         Check dependencies
   --help          Show this help
@@ -122,6 +127,9 @@ Options:
 
 # Run only Pindel analysis
 ./processBAM.sh --pindel
+
+# Generate coverage plots only
+./processBAM.sh --plots
 
 # Check dependencies
 ./processBAM.sh --check
@@ -168,6 +176,20 @@ Per-sample VCF files for structural variants:
 - `*.CALR.pindel.vcf` - CALR breakpoints (chr19)
 - `pindel/` - Intermediate Pindel files
 
+### Coverage Plots (`*_Coverage.pdf`)
+
+Multi-page PDF files per sample with:
+- **TMSP pages (5 pages)**: ~13,700 positions per page covering all 56 TMSP genes
+- **CEBPA page (1 page)**: ~1,200 positions for CEBPA gene
+
+Each plot includes:
+- **Sample depth** (black line) - actual coverage at each position
+- **Average depth** (blue line) - average of all other samples
+- **UCL/LCL bands** (light blue) - confidence interval (AVE +/- STD)
+- **250x reference line** (red dashed) - minimum coverage threshold
+- **Alternating gene shading** - gray/white bands to demarcate gene boundaries
+- **Gene labels** - gene names displayed at top of each region
+
 ## Processing Details
 
 ### QC Stage
@@ -191,6 +213,14 @@ Per-sample VCF files for structural variants:
 2. Runs `pindel` for FLT3 (chr13) and CALR (chr19)
 3. Converts output to VCF using `pindel2vcf`
 4. Stores intermediate files in `pindel/` directory
+
+### Plots Stage
+
+1. Extracts TMSP and CEBPA data from `CoverageData.xlsx` to CSV
+2. Uses R base graphics to generate multi-page PDF plots
+3. Splits 68,800 TMSP positions across 5 pages
+4. Creates alternating gene shading for all 56 genes
+5. Adds sample depth, average, UCL/LCL, and 250x reference lines
 
 ## Integrated Functions
 
@@ -216,12 +246,18 @@ The following functions are built into the script (no external dependencies):
 - `run_pindel_calr` - Runs Pindel for CALR gene
 - `run_pindel_analysis` - Orchestrates Pindel for all samples
 
+### Coverage Plot Generation
+- `generate_coverage_plots` - Orchestrates plot generation for all samples
+- `generateCoveragePlots.sh` - Wrapper script for Excel to CSV conversion and R plotting
+- `plotCoverage.R` - R script using base graphics for PDF generation
+
 ## Checkpoint System
 
 The pipeline automatically detects completed stages:
 - Checks for `QCdata.xlsx` for QC stage
 - Checks for `CoverageData.xlsx` for coverage stage
 - Checks for `*.pindel.vcf` files for Pindel stage
+- Checks for `*_Coverage.pdf` files for Plots stage
 
 Use `--status` to view completion status, `--force` to re-run completed stages.
 
@@ -241,6 +277,12 @@ Use `--status` to view completion status, `--force` to re-run completed stages.
 
 ## Version History
 
+- v1.2 (2025-01): Coverage plot generation
+  - Added Stage 4: Coverage plots with gene shading
+  - R script for multi-page PDF generation using base graphics
+  - Alternating gene shading for 56 TMSP genes
+  - Sample depth, AVE, UCL/LCL, and 250x reference lines
+  - New `--plots` command line option
 - v1.1 (2025-01): Self-contained Excel writers
   - Integrated Excel writing functions using Python/openpyxl
   - Removed external Perl script dependencies

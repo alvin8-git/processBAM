@@ -581,6 +581,34 @@ run_pindel_analysis() {
 }
 
 # =============================================================================
+# COVERAGE PLOT GENERATION
+# =============================================================================
+# Generates multi-page PDF coverage plots with gene shading
+# Output: *_Coverage.pdf files (one per sample)
+
+generate_coverage_plots() {
+    log_info "######################## GENERATING COVERAGE PLOTS #########################"
+
+    local plot_count=$(ls *_Coverage.pdf 2>/dev/null | wc -l)
+    local bam_count=$(ls *.bam 2>/dev/null | wc -l)
+
+    if [ "$plot_count" -ge "$bam_count" ] && [ "$bam_count" -gt 0 ]; then
+        log_info "Coverage plots already exist, skipping..."
+        return 0
+    fi
+
+    if [ ! -f "CoverageData.xlsx" ]; then
+        log_error "CoverageData.xlsx not found. Run --coverage first."
+        return 1
+    fi
+
+    log_info "Generating coverage plots from CoverageData.xlsx..."
+    "$SCRIPT_DIR/generateCoveragePlots.sh" "CoverageData.xlsx" "."
+
+    log_info "Coverage plot generation complete"
+}
+
+# =============================================================================
 # CHECKPOINT DETECTION
 # =============================================================================
 
@@ -600,6 +628,14 @@ check_pindel_complete() {
     local bam_count=$(ls *.bam 2>/dev/null | wc -l)
 
     [ "$flt3_count" -eq "$bam_count" ] && [ "$calr_count" -eq "$bam_count" ] && return 0
+    return 1
+}
+
+check_plots_complete() {
+    local plot_count=$(ls *_Coverage.pdf 2>/dev/null | wc -l)
+    local bam_count=$(ls *.bam 2>/dev/null | wc -l)
+
+    [ "$plot_count" -ge "$bam_count" ] && [ "$bam_count" -gt 0 ] && return 0
     return 1
 }
 
@@ -626,6 +662,13 @@ show_status() {
     else
         echo "  [ ] Pindel analysis not complete"
     fi
+
+    if check_plots_complete; then
+        local pdf_count=$(ls *_Coverage.pdf 2>/dev/null | wc -l)
+        echo "  [✓] Coverage plots complete ($pdf_count PDF files)"
+    else
+        echo "  [ ] Coverage plots not complete"
+    fi
     echo ""
 }
 
@@ -640,6 +683,7 @@ main() {
     local run_qc=false
     local run_coverage=false
     local run_pindel=false
+    local run_plots=false
     local run_all=true
     local force=false
     local show_status_only=false
@@ -663,6 +707,10 @@ main() {
                 ;;
             --pindel)
                 run_pindel=true
+                run_all=false
+                ;;
+            --plots)
+                run_plots=true
                 run_all=false
                 ;;
             --force|-f)
@@ -713,6 +761,7 @@ main() {
                 echo "  1. QC        - Run Picard and mosdepth QC metrics"
                 echo "  2. Coverage  - Calculate coverage depth with cross-validation"
                 echo "  3. Pindel    - Detect FLT3 and CALR breakpoints"
+                echo "  4. Plots     - Generate coverage plots with gene shading"
                 echo ""
                 echo "Options:"
                 echo "  (no options)    Run all stages (skip completed stages)"
@@ -720,6 +769,7 @@ main() {
                 echo "  --qc            Run QC stage only"
                 echo "  --coverage      Run coverage stage only"
                 echo "  --pindel        Run Pindel stage only"
+                echo "  --plots         Run coverage plot generation only"
                 echo "  --force, -f     Force re-run even if stage is complete"
                 echo "  --check         Check dependencies"
                 echo "  --help          Show this help"
@@ -728,6 +778,7 @@ main() {
                 echo "  $0                  # Run full pipeline"
                 echo "  $0 --status         # Check what stages are complete"
                 echo "  $0 --qc --force     # Force regenerate QC data"
+                echo "  $0 --plots          # Generate coverage plots only"
                 echo ""
                 echo "Expected directory structure:"
                 echo "  /path/to/analysis/"
@@ -781,6 +832,7 @@ main() {
         run_qc=true
         run_coverage=true
         run_pindel=true
+        run_plots=true
     fi
 
     # =========================================================================
@@ -820,11 +872,24 @@ main() {
     fi
 
     # =========================================================================
+    # STAGE 4: COVERAGE PLOTS
+    # =========================================================================
+    if [ "$run_plots" = true ]; then
+        if [ "$force" = true ] || ! check_plots_complete; then
+            log_info ">>> STAGE 4: COVERAGE PLOTS"
+            generate_coverage_plots
+        else
+            log_info ">>> STAGE 4: COVERAGE PLOTS [SKIPPED - already complete]"
+        fi
+    fi
+
+    # =========================================================================
     # CREATE OUTPUT DIRECTORY
     # =========================================================================
     log_info "######################## CREATING OUTPUT #########################"
     [ ! -d ../output ] && mkdir -p ../output
     cp *.xlsx ../output/ 2>/dev/null || true
+    cp *_Coverage.pdf ../output/ 2>/dev/null || true
 
     local end_time=$(date +%s)
     local duration=$((end_time - start_time))
