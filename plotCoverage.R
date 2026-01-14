@@ -49,7 +49,7 @@ cebpa_genes <- data.frame(
 COL_GENE_SHADE <- rgb(0, 1, 1, 0.3)       # Cyan with transparency
 COL_GENE_SHADE_ALT <- "white"              # White for alternating
 COL_COVERAGE <- "darkblue"                 # Bold dark blue for coverage
-COL_UCL_LCL <- rgb(0.7, 0.7, 0.7, 0.5)    # Grey for UCL/LCL
+COL_UCL_LCL <- "lightgrey"                 # Light grey for UCL/LCL lines
 COL_ZSCORE <- rgb(1, 0.4, 0.7, 0.8)       # Pink for Z-score
 COL_RATIO <- rgb(0.6, 0.2, 0.8, 0.8)      # Purple for Ratio
 COL_REF_LINE <- "red"                      # Red for 250x reference
@@ -167,10 +167,9 @@ create_coverage_plot <- function(data, gene_bounds, title, x_range = NULL) {
   # Draw gene shading (background)
   draw_gene_shading(gene_bounds, x_range, y_min, y_max)
 
-  # Draw UCL/LCL polygon (grey confidence band)
-  polygon(c(data$idx, rev(data$idx)),
-          c(data$lcl, rev(data$ucl)),
-          col = COL_UCL_LCL, border = NA)
+  # Draw UCL and LCL as light grey dashed lines
+  lines(data$idx, data$ucl, col = COL_UCL_LCL, lty = 2, lwd = 0.8)
+  lines(data$idx, data$lcl, col = COL_UCL_LCL, lty = 2, lwd = 0.8)
 
   # Draw reference line at 250x
   abline(h = 250, col = COL_REF_LINE, lty = 2, lwd = 1)
@@ -178,14 +177,12 @@ create_coverage_plot <- function(data, gene_bounds, title, x_range = NULL) {
   # Draw sample depth line ONLY (bold dark blue)
   lines(data$idx, data$depth, col = COL_COVERAGE, lwd = 1.5)
 
-  # Add legend
-  legend("topright",
+  # Add legend at bottom right (moved from top right to avoid covering gene names)
+  legend("bottomright",
          legend = c("Coverage", "UCL/LCL", "250x"),
          col = c(COL_COVERAGE, COL_UCL_LCL, COL_REF_LINE),
-         lty = c(1, NA, 2),
-         lwd = c(1.5, NA, 1),
-         pch = c(NA, 15, NA),
-         pt.cex = c(NA, 2, NA),
+         lty = c(1, 2, 2),
+         lwd = c(1.5, 0.8, 1),
          cex = 0.6, bg = "white")
 
   box()
@@ -195,13 +192,13 @@ create_coverage_plot <- function(data, gene_bounds, title, x_range = NULL) {
   # =========================================================================
   par(mar = c(0.5, 4, 0.5, 1))  # Minimal margins
 
-  # Fixed Z-score limits: -1 to 1
-  z_min <- -1
-  z_max <- 1
+  # Fixed Z-score limits: -2 to 2
+  z_min <- -2
+  z_max <- 2
 
   plot(NULL, xlim = x_range, ylim = c(z_min, z_max),
        xlab = "", ylab = "",
-       type = "n", xaxs = "i", yaxs = "i", xaxt = "n")
+       type = "n", xaxs = "i", yaxs = "i", xaxt = "n", yaxt = "n")
 
   # Draw gene shading
   draw_gene_shading_linear(gene_bounds, x_range, z_min, z_max)
@@ -213,8 +210,8 @@ create_coverage_plot <- function(data, gene_bounds, title, x_range = NULL) {
   zscore_clipped <- pmax(z_min, pmin(z_max, data$zscore))
   lines(data$idx, zscore_clipped, col = COL_ZSCORE, lwd = 1)
 
-  # Y-axis with labels
-  axis(2, at = c(-1, 0, 1), labels = c("-1", "0", "1"), las = 1, cex.axis = 0.7)
+  # Y-axis with integer labels only (-2, -1, 0, 1, 2)
+  axis(2, at = c(-2, -1, 0, 1, 2), labels = c("-2", "-1", "0", "1", "2"), las = 1, cex.axis = 0.7)
 
   # Label
   mtext("Z-score", side = 2, line = 2.5, cex = 0.7, col = COL_ZSCORE)
@@ -232,7 +229,7 @@ create_coverage_plot <- function(data, gene_bounds, title, x_range = NULL) {
 
   plot(NULL, xlim = x_range, ylim = c(r_min, r_max),
        xlab = "Absolute position (bp)", ylab = "",
-       type = "n", xaxs = "i", yaxs = "i")
+       type = "n", xaxs = "i", yaxs = "i", yaxt = "n")
 
   # Draw gene shading
   draw_gene_shading_linear(gene_bounds, x_range, r_min, r_max)
@@ -244,7 +241,7 @@ create_coverage_plot <- function(data, gene_bounds, title, x_range = NULL) {
   ratio_clipped <- pmax(r_min, pmin(r_max, data$ratio))
   lines(data$idx, ratio_clipped, col = COL_RATIO, lwd = 1)
 
-  # Y-axis with labels
+  # Y-axis with integer labels only (0, 1, 2)
   axis(2, at = c(0, 1, 2), labels = c("0", "1", "2"), las = 1, cex.axis = 0.7)
 
   # Label
@@ -303,8 +300,8 @@ main <- function(args) {
     cat("\nGenerates coverage plot PDFs from CSV files\n")
     cat("Output: One PDF per sample with TMSP (5 pages) and CEBPA coverage\n")
     cat("\nEach plot includes:\n")
-    cat("  - Coverage (log scale, dark blue) with UCL/LCL (grey)\n")
-    cat("  - Z-score subplot (pink, -1 to 1) - CNV deviation detection\n")
+    cat("  - Coverage (log scale, dark blue) with UCL/LCL (light grey dashed lines)\n")
+    cat("  - Z-score subplot (pink, -2 to 2) - CNV deviation detection\n")
     cat("  - Ratio subplot (purple, 0 to 2) - coverage over mean\n")
     quit(status = 1)
   }
