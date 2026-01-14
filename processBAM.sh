@@ -616,6 +616,40 @@ generate_coverage_plots() {
 }
 
 # =============================================================================
+# QC REPORT GENERATION
+# =============================================================================
+# Generates 2-page PDF QC reports with Picard and Mosdepth statistics
+# Output: ../output/QCreports/*_QC.pdf files (one per sample)
+
+generate_qc_reports() {
+    log_info "######################## GENERATING QC REPORTS #########################"
+
+    local output_dir="../output/QCreports"
+    mkdir -p "$output_dir"
+
+    local report_count=$(ls "$output_dir"/*_QC.pdf 2>/dev/null | wc -l)
+    local bam_count=$(ls *.bam 2>/dev/null | wc -l)
+
+    if [ "$report_count" -ge "$bam_count" ] && [ "$bam_count" -gt 0 ]; then
+        log_info "QC reports already exist in $output_dir, skipping..."
+        return 0
+    fi
+
+    if [ ! -f "QCdata.xlsx" ]; then
+        log_error "QCdata.xlsx not found. Run --qc first."
+        return 1
+    fi
+
+    log_info "Generating QC reports to $output_dir..."
+    "$SCRIPT_DIR/generateQCreport.sh" "QCdata.xlsx" "$output_dir"
+
+    # Copy Excel files to output directory
+    cp QCdata.xlsx "$output_dir/" 2>/dev/null || true
+
+    log_info "QC report generation complete"
+}
+
+# =============================================================================
 # CHECKPOINT DETECTION
 # =============================================================================
 
@@ -643,6 +677,14 @@ check_plots_complete() {
     local bam_count=$(ls *.bam 2>/dev/null | wc -l)
 
     [ "$plot_count" -ge "$bam_count" ] && [ "$bam_count" -gt 0 ] && return 0
+    return 1
+}
+
+check_qc_reports_complete() {
+    local report_count=$(ls ../output/QCreports/*_QC.pdf 2>/dev/null | wc -l)
+    local bam_count=$(ls *.bam 2>/dev/null | wc -l)
+
+    [ "$report_count" -ge "$bam_count" ] && [ "$bam_count" -gt 0 ] && return 0
     return 1
 }
 
@@ -676,6 +718,13 @@ show_status() {
     else
         echo "  [ ] Coverage plots not complete"
     fi
+
+    if check_qc_reports_complete; then
+        local qc_count=$(ls ../output/QCreports/*_QC.pdf 2>/dev/null | wc -l)
+        echo "  [✓] QC reports complete ($qc_count PDF files in ../output/QCreports/)"
+    else
+        echo "  [ ] QC reports not complete"
+    fi
     echo ""
 }
 
@@ -691,6 +740,7 @@ main() {
     local run_coverage=false
     local run_pindel=false
     local run_plots=false
+    local run_qcreport=false
     local run_all=true
     local force=false
     local show_status_only=false
@@ -718,6 +768,10 @@ main() {
                 ;;
             --plots)
                 run_plots=true
+                run_all=false
+                ;;
+            --qcreport)
+                run_qcreport=true
                 run_all=false
                 ;;
             --force|-f)
@@ -769,6 +823,7 @@ main() {
                 echo "  2. Coverage  - Calculate coverage depth with cross-validation"
                 echo "  3. Pindel    - Detect FLT3 and CALR breakpoints"
                 echo "  4. Plots     - Generate coverage plots with gene shading"
+                echo "  5. QCReport  - Generate QC report PDFs (Picard + gene coverage)"
                 echo ""
                 echo "Options:"
                 echo "  (no options)    Run all stages (skip completed stages)"
@@ -777,6 +832,7 @@ main() {
                 echo "  --coverage      Run coverage stage only"
                 echo "  --pindel        Run Pindel stage only"
                 echo "  --plots         Run coverage plot generation only"
+                echo "  --qcreport      Run QC report generation only"
                 echo "  --force, -f     Force re-run even if stage is complete"
                 echo "  --check         Check dependencies"
                 echo "  --help          Show this help"
@@ -840,6 +896,7 @@ main() {
         run_coverage=true
         run_pindel=true
         run_plots=true
+        run_qcreport=true
     fi
 
     # =========================================================================
@@ -887,6 +944,18 @@ main() {
             generate_coverage_plots
         else
             log_info ">>> STAGE 4: COVERAGE PLOTS [SKIPPED - already complete]"
+        fi
+    fi
+
+    # =========================================================================
+    # STAGE 5: QC REPORTS
+    # =========================================================================
+    if [ "$run_qcreport" = true ]; then
+        if [ "$force" = true ] || ! check_qc_reports_complete; then
+            log_info ">>> STAGE 5: QC REPORTS"
+            generate_qc_reports
+        else
+            log_info ">>> STAGE 5: QC REPORTS [SKIPPED - already complete]"
         fi
     fi
 

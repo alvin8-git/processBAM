@@ -10,6 +10,7 @@ This pipeline:
 - Detects FLT3 (chr13) and CALR (chr19) breakpoints using Pindel
 - Generates Excel reports for QC and coverage data
 - **Generates coverage plot PDFs** with alternating gene shading (using R)
+- **Generates QC report PDFs** with Picard stats and gene coverage tables (using R)
 - **Fully self-contained** - all Excel writing functions integrated (no external scripts)
 
 ## Directory Structure
@@ -19,6 +20,8 @@ processBAM/
 ├── processBAM.sh              # Main pipeline script (self-contained)
 ├── generateCoveragePlots.sh   # Coverage plot generation wrapper
 ├── plotCoverage.R             # R script for coverage plot generation
+├── generateQCreport.sh        # QC report generation wrapper
+├── plotQC.R                   # R script for QC report generation
 └── README.md                  # This file
 ```
 
@@ -100,6 +103,7 @@ Pipeline Stages:
   2. Coverage  - Calculate coverage depth with cross-validation
   3. Pindel    - Detect FLT3 and CALR breakpoints
   4. Plots     - Generate coverage plots with gene shading
+  5. QCReport  - Generate QC report PDFs (Picard + gene coverage)
 
 Options:
   (no options)    Run all stages (skip completed stages)
@@ -108,6 +112,7 @@ Options:
   --coverage      Run coverage stage only
   --pindel        Run Pindel stage only
   --plots         Run coverage plot generation only
+  --qcreport      Run QC report generation only
   --force, -f     Force re-run even if stage is complete
   --check         Check dependencies
   --help          Show this help
@@ -130,6 +135,9 @@ Options:
 
 # Generate coverage plots only
 ./processBAM.sh --plots
+
+# Generate QC reports only
+./processBAM.sh --qcreport
 
 # Check dependencies
 ./processBAM.sh --check
@@ -183,12 +191,32 @@ Multi-page PDF files per sample with:
 - **CEBPA page (1 page)**: ~1,200 positions for CEBPA gene
 
 Each plot includes:
-- **Sample depth** (black line) - actual coverage at each position
-- **Average depth** (blue line) - average of all other samples
-- **UCL/LCL bands** (light blue) - confidence interval (AVE +/- STD)
+- **Sample depth** (dark blue line) - actual coverage at each position
+- **UCL/LCL lines** (light grey) - confidence interval (AVE +/- STD)
 - **250x reference line** (red dashed) - minimum coverage threshold
-- **Alternating gene shading** - gray/white bands to demarcate gene boundaries
-- **Gene labels** - gene names displayed at top of each region
+- **Z-score subplot** (pink) - deviation from mean (-2 to 2 range)
+- **Ratio subplot** (purple) - coverage relative to mean (0 to 2 range)
+- **Alternating gene shading** (cyan/white) - to demarcate gene boundaries
+- **Gene labels** - rotated 90 degrees at top of each region
+
+### QC Reports (`*_QC.pdf`)
+
+Two-page PDF files per sample with:
+
+**Page 1 - Picard Statistics:**
+- Sequencing statistics (total reads, R1/R2, read length)
+- Base quality (total bases, Q20, Q30)
+- Alignment statistics (reads aligned, bases aligned)
+- Variant statistics (SNPs, insertions, deletions, Ti/Tv ratio)
+- Zygosity (heterozygous, homozygous, Het/Hom ratio)
+
+**Page 2 - Gene Coverage Table:**
+- Per-gene coverage statistics for all 54 TMSP genes
+- Exons targeted per gene
+- Average coverage depth
+- Proportion of bases covered at 1X, 100X, 250X, >1000X
+- Color-coded cells (red=0% to white=100% coverage)
+- Overall summary row
 
 ## Processing Details
 
@@ -220,7 +248,15 @@ Each plot includes:
 2. Uses R base graphics to generate multi-page PDF plots
 3. Splits 68,800 TMSP positions across 5 pages
 4. Creates alternating gene shading for all 56 genes
-5. Adds sample depth, average, UCL/LCL, and 250x reference lines
+5. Adds sample depth, UCL/LCL lines, Z-score, and Ratio subplots
+
+### QC Reports Stage
+
+1. Extracts Picard.ALL and Mosdepth.ALL from `QCdata.xlsx` to CSV
+2. Uses R base graphics to generate 2-page PDF reports
+3. Page 1: Formats Picard metrics into readable statistics sections
+4. Page 2: Aggregates mosdepth data by gene and creates coverage table
+5. Applies color scale to coverage proportions (red=0% to white=100%)
 
 ## Integrated Functions
 
@@ -251,13 +287,19 @@ The following functions are built into the script (no external dependencies):
 - `generateCoveragePlots.sh` - Wrapper script for Excel to CSV conversion and R plotting
 - `plotCoverage.R` - R script using base graphics for PDF generation
 
+### QC Report Generation
+- `generate_qc_reports` - Orchestrates QC report generation for all samples
+- `generateQCreport.sh` - Wrapper script for Excel to CSV conversion and R plotting
+- `plotQC.R` - R script using base graphics for 2-page PDF reports
+
 ## Checkpoint System
 
 The pipeline automatically detects completed stages:
 - Checks for `QCdata.xlsx` for QC stage
 - Checks for `CoverageData.xlsx` for coverage stage
 - Checks for `*.pindel.vcf` files for Pindel stage
-- Checks for `*_Coverage.pdf` files for Plots stage
+- Checks for `*_Coverage.pdf` files in `../output/CoveragePlots/` for Plots stage
+- Checks for `*_QC.pdf` files in `../output/QCreports/` for QC Reports stage
 
 Use `--status` to view completion status, `--force` to re-run completed stages.
 
@@ -277,11 +319,16 @@ Use `--status` to view completion status, `--force` to re-run completed stages.
 
 ## Version History
 
+- v1.3 (2025-01): QC report generation
+  - Added Stage 5: QC report PDFs (Picard + gene coverage)
+  - R script for 2-page PDF generation with color-coded coverage table
+  - Per-gene coverage aggregation for 54 TMSP genes
+  - New `--qcreport` command line option
 - v1.2 (2025-01): Coverage plot generation
   - Added Stage 4: Coverage plots with gene shading
   - R script for multi-page PDF generation using base graphics
-  - Alternating gene shading for 56 TMSP genes
-  - Sample depth, AVE, UCL/LCL, and 250x reference lines
+  - Alternating cyan/white gene shading for 56 TMSP genes
+  - Sample depth, UCL/LCL lines, Z-score and Ratio subplots
   - New `--plots` command line option
 - v1.1 (2025-01): Self-contained Excel writers
   - Integrated Excel writing functions using Python/openpyxl
