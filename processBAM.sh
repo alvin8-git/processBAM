@@ -584,16 +584,19 @@ run_pindel_analysis() {
 # COVERAGE PLOT GENERATION
 # =============================================================================
 # Generates multi-page PDF coverage plots with gene shading
-# Output: *_Coverage.pdf files (one per sample)
+# Output: ../output/CoveragePlots/*_Coverage.pdf files (one per sample)
 
 generate_coverage_plots() {
     log_info "######################## GENERATING COVERAGE PLOTS #########################"
 
-    local plot_count=$(ls *_Coverage.pdf 2>/dev/null | wc -l)
+    local output_dir="../output/CoveragePlots"
+    mkdir -p "$output_dir"
+
+    local plot_count=$(ls "$output_dir"/*_Coverage.pdf 2>/dev/null | wc -l)
     local bam_count=$(ls *.bam 2>/dev/null | wc -l)
 
     if [ "$plot_count" -ge "$bam_count" ] && [ "$bam_count" -gt 0 ]; then
-        log_info "Coverage plots already exist, skipping..."
+        log_info "Coverage plots already exist in $output_dir, skipping..."
         return 0
     fi
 
@@ -602,8 +605,12 @@ generate_coverage_plots() {
         return 1
     fi
 
-    log_info "Generating coverage plots from CoverageData.xlsx..."
-    "$SCRIPT_DIR/generateCoveragePlots.sh" "CoverageData.xlsx" "."
+    log_info "Generating coverage plots to $output_dir..."
+    "$SCRIPT_DIR/generateCoveragePlots.sh" "CoverageData.xlsx" "$output_dir"
+
+    # Copy Excel files to output directory
+    cp CoverageData.xlsx "$output_dir/" 2>/dev/null || true
+    cp QCdata.xlsx "$output_dir/" 2>/dev/null || true
 
     log_info "Coverage plot generation complete"
 }
@@ -632,7 +639,7 @@ check_pindel_complete() {
 }
 
 check_plots_complete() {
-    local plot_count=$(ls *_Coverage.pdf 2>/dev/null | wc -l)
+    local plot_count=$(ls ../output/CoveragePlots/*_Coverage.pdf 2>/dev/null | wc -l)
     local bam_count=$(ls *.bam 2>/dev/null | wc -l)
 
     [ "$plot_count" -ge "$bam_count" ] && [ "$bam_count" -gt 0 ] && return 0
@@ -664,8 +671,8 @@ show_status() {
     fi
 
     if check_plots_complete; then
-        local pdf_count=$(ls *_Coverage.pdf 2>/dev/null | wc -l)
-        echo "  [✓] Coverage plots complete ($pdf_count PDF files)"
+        local pdf_count=$(ls ../output/CoveragePlots/*_Coverage.pdf 2>/dev/null | wc -l)
+        echo "  [✓] Coverage plots complete ($pdf_count PDF files in ../output/CoveragePlots/)"
     else
         echo "  [ ] Coverage plots not complete"
     fi
@@ -889,7 +896,7 @@ main() {
     log_info "######################## CREATING OUTPUT #########################"
     [ ! -d ../output ] && mkdir -p ../output
     cp *.xlsx ../output/ 2>/dev/null || true
-    cp *_Coverage.pdf ../output/ 2>/dev/null || true
+    # Coverage plots are stored in ../output/CoveragePlots/ (handled by generate_coverage_plots)
 
     local end_time=$(date +%s)
     local duration=$((end_time - start_time))
