@@ -6,6 +6,11 @@
 #
 # Input: CSV files with columns: Chr, Pos, Sample1, Sample1.AVE, Sample1.STD, ...
 # Output: One PDF per sample with TMSP (5 pages) and CEBPA (1 page) coverage plots
+#
+# Each page contains:
+#   - Coverage plot (log scale Y-axis) with UCL/LCL bands
+#   - Z-score subplot (pink)
+#   - Ratio subplot (purple)
 
 # =============================================================================
 # Gene boundary definitions (from TMSP panel)
@@ -39,6 +44,18 @@ cebpa_genes <- data.frame(
 )
 
 # =============================================================================
+# Color definitions
+# =============================================================================
+COL_GENE_SHADE <- rgb(0, 1, 1, 0.3)       # Cyan with transparency
+COL_GENE_SHADE_ALT <- "white"              # White for alternating
+COL_COVERAGE <- "darkblue"                 # Bold dark blue for coverage
+COL_AVERAGE <- "blue"                      # Blue for average line
+COL_UCL_LCL <- rgb(1, 1, 0.6, 0.5)        # Light yellow for UCL/LCL
+COL_ZSCORE <- rgb(1, 0.4, 0.7, 0.8)       # Pink for Z-score
+COL_RATIO <- rgb(0.6, 0.2, 0.8, 0.8)      # Purple for Ratio
+COL_REF_LINE <- "red"                      # Red for 250x reference
+
+# =============================================================================
 # Helper functions
 # =============================================================================
 
@@ -67,8 +84,8 @@ get_sample_data <- function(df, sample_idx) {
   )
 }
 
-# Draw alternating gene shading
-draw_gene_shading <- function(gene_bounds, x_range, y_max) {
+# Draw alternating gene shading (cyan/white)
+draw_gene_shading <- function(gene_bounds, x_range, y_min, y_max) {
   # Filter genes to visible range
   visible <- gene_bounds[gene_bounds$end >= x_range[1] & gene_bounds$start <= x_range[2], ]
   if (nrow(visible) == 0) return()
@@ -76,14 +93,14 @@ draw_gene_shading <- function(gene_bounds, x_range, y_max) {
   visible$start <- pmax(visible$start, x_range[1])
   visible$end <- pmin(visible$end, x_range[2])
 
-  # Draw alternating rectangles
+  # Draw alternating rectangles (cyan/white)
   for (i in 1:nrow(visible)) {
-    col <- if (i %% 2 == 1) rgb(0.9, 0.9, 0.9) else rgb(1, 1, 1)
-    rect(visible$start[i], 0, visible$end[i], y_max, col = col, border = NA)
+    col <- if (i %% 2 == 1) COL_GENE_SHADE else COL_GENE_SHADE_ALT
+    rect(visible$start[i], y_min, visible$end[i], y_max, col = col, border = NA)
   }
 
-  # Draw gene labels
-  label_y <- y_max * 0.95
+  # Draw gene labels at top
+  label_y <- 10^(log10(y_max) * 0.95)
   for (i in 1:nrow(visible)) {
     gene_width <- visible$end[i] - visible$start[i]
     if (gene_width > 200) {  # Only label genes with enough space
@@ -93,12 +110,34 @@ draw_gene_shading <- function(gene_bounds, x_range, y_max) {
   }
 }
 
-# Create coverage plot for a single page
+# Draw gene shading for subplots (no labels, linear scale)
+draw_gene_shading_linear <- function(gene_bounds, x_range, y_min, y_max) {
+  visible <- gene_bounds[gene_bounds$end >= x_range[1] & gene_bounds$start <= x_range[2], ]
+  if (nrow(visible) == 0) return()
+
+  visible$start <- pmax(visible$start, x_range[1])
+  visible$end <- pmin(visible$end, x_range[2])
+
+  for (i in 1:nrow(visible)) {
+    col <- if (i %% 2 == 1) COL_GENE_SHADE else COL_GENE_SHADE_ALT
+    rect(visible$start[i], y_min, visible$end[i], y_max, col = col, border = NA)
+  }
+}
+
+# Create coverage plot with subplots for a single page
 create_coverage_plot <- function(data, gene_bounds, title, x_range = NULL) {
 
-  # Add UCL/LCL
+  # Calculate derived values
   data$ucl <- data$ave + data$std
-  data$lcl <- pmax(0, data$ave - data$std)
+  data$lcl <- pmax(1, data$ave - data$std)  # Min 1 for log scale
+  data$zscore <- ifelse(data$std > 0, (data$depth - data$ave) / data$std, 0)
+  data$ratio <- ifelse(data$ave > 0, data$depth / data$ave, 1)
+
+  # Ensure depth is at least 1 for log scale
+  data$depth <- pmax(1, data$depth)
+  data$ave <- pmax(1, data$ave)
+  data$ucl <- pmax(1, data$ucl)
+  data$lcl <- pmax(1, data$lcl)
 
   # Filter to x_range if specified
   if (!is.null(x_range)) {
@@ -109,47 +148,112 @@ create_coverage_plot <- function(data, gene_bounds, title, x_range = NULL) {
 
   if (nrow(data) == 0) return()
 
-  # Calculate y limits
-  y_max <- max(c(data$depth, data$ucl, 500), na.rm = TRUE) * 1.15
-  y_max <- min(y_max, 10000)  # Cap at 10000
+  # Calculate y limits for coverage (log scale)
+  y_min <- 1
+  y_max <- max(c(data$depth, data$ucl, 500), na.rm = TRUE) * 2
+  y_max <- min(y_max, 100000)  # Cap at 100000
 
-  # Set up plot area with margins for labels
-  par(mar = c(4, 4, 3, 1))
+  # Set up layout: Coverage (large), Z-score (small), Ratio (small)
+  layout(matrix(c(1, 2, 3), nrow = 3), heights = c(3, 1, 1))
 
-  # Create empty plot
-  plot(NULL, xlim = x_range, ylim = c(0, y_max),
-       xlab = "Position Index", ylab = "Coverage Depth",
-       main = title, type = "n", xaxs = "i", yaxs = "i")
+  # =========================================================================
+  # COVERAGE PLOT (Top - main plot with log scale)
+  # =========================================================================
+  par(mar = c(0.5, 4, 3, 1))  # Minimal bottom margin, no x-axis labels
 
-  # Draw gene shading first (background)
-  draw_gene_shading(gene_bounds, x_range, y_max)
+  # Create empty plot with log scale
+  plot(NULL, xlim = x_range, ylim = c(y_min, y_max),
+       xlab = "", ylab = "Coverage Depth",
+       main = title, type = "n", xaxs = "i", yaxs = "i",
+       log = "y", xaxt = "n")  # No x-axis
 
-  # Draw UCL/LCL polygon (confidence band)
+  # Draw gene shading (background)
+  draw_gene_shading(gene_bounds, x_range, y_min, y_max)
+
+  # Draw UCL/LCL polygon (light yellow confidence band)
   polygon(c(data$idx, rev(data$idx)),
           c(data$lcl, rev(data$ucl)),
-          col = rgb(0.68, 0.85, 0.9, 0.3), border = NA)
+          col = COL_UCL_LCL, border = NA)
 
   # Draw reference line at 250x
-  abline(h = 250, col = "red", lty = 2, lwd = 1)
+  abline(h = 250, col = COL_REF_LINE, lty = 2, lwd = 1)
 
   # Draw average line
-  lines(data$idx, data$ave, col = "blue", lwd = 0.5)
+  lines(data$idx, data$ave, col = COL_AVERAGE, lwd = 0.5)
 
-  # Draw sample depth line
-  lines(data$idx, data$depth, col = "black", lwd = 0.7)
+  # Draw sample depth line (bold dark blue)
+  lines(data$idx, data$depth, col = COL_COVERAGE, lwd = 1.5)
 
   # Add legend
   legend("topright",
-         legend = c("Sample Depth", "Average", "UCL/LCL", "250x"),
-         col = c("black", "blue", rgb(0.68, 0.85, 0.9), "red"),
+         legend = c("Coverage", "Average", "UCL/LCL", "250x"),
+         col = c(COL_COVERAGE, COL_AVERAGE, COL_UCL_LCL, COL_REF_LINE),
          lty = c(1, 1, NA, 2),
-         lwd = c(1, 0.5, NA, 1),
+         lwd = c(1.5, 0.5, NA, 1),
          pch = c(NA, NA, 15, NA),
          pt.cex = c(NA, NA, 2, NA),
          cex = 0.6, bg = "white")
 
-  # Re-draw box
   box()
+
+  # =========================================================================
+  # Z-SCORE SUBPLOT (Middle - pink)
+  # =========================================================================
+  par(mar = c(0.5, 4, 0.5, 1))  # Minimal margins
+
+  # Calculate Z-score limits (symmetric around 0)
+  z_max <- max(abs(data$zscore), na.rm = TRUE)
+  z_max <- min(z_max, 10)  # Cap at +/- 10
+  z_max <- max(z_max, 3)   # At least +/- 3
+
+  plot(NULL, xlim = x_range, ylim = c(-z_max, z_max),
+       xlab = "", ylab = "",
+       type = "n", xaxs = "i", yaxs = "i", xaxt = "n", yaxt = "n")
+
+  # Draw gene shading
+  draw_gene_shading_linear(gene_bounds, x_range, -z_max, z_max)
+
+  # Reference line at 0
+  abline(h = 0, col = "gray50", lty = 1, lwd = 0.5)
+
+  # Draw Z-score line (pink)
+  lines(data$idx, data$zscore, col = COL_ZSCORE, lwd = 1)
+
+  # Label
+  mtext("Z-score", side = 2, line = 1, cex = 0.7, col = COL_ZSCORE)
+
+  box()
+
+  # =========================================================================
+  # RATIO SUBPLOT (Bottom - purple)
+  # =========================================================================
+  par(mar = c(3, 4, 0.5, 1))  # Bottom margin for x-axis
+
+  # Calculate Ratio limits (centered around 1)
+  r_max <- max(abs(data$ratio - 1), na.rm = TRUE) + 1
+  r_max <- min(r_max, 3)  # Cap at 0-3
+  r_max <- max(r_max, 2)  # At least 0-2
+
+  plot(NULL, xlim = x_range, ylim = c(0, r_max),
+       xlab = "Position Index", ylab = "",
+       type = "n", xaxs = "i", yaxs = "i", yaxt = "n")
+
+  # Draw gene shading
+  draw_gene_shading_linear(gene_bounds, x_range, 0, r_max)
+
+  # Reference line at 1
+  abline(h = 1, col = "gray50", lty = 1, lwd = 0.5)
+
+  # Draw Ratio line (purple)
+  lines(data$idx, data$ratio, col = COL_RATIO, lwd = 1)
+
+  # Label
+  mtext("Ratio", side = 2, line = 1, cex = 0.7, col = COL_RATIO)
+
+  box()
+
+  # Reset layout
+  layout(1)
 }
 
 # Generate PDF for one sample
@@ -198,6 +302,10 @@ main <- function(args) {
     cat("Usage: Rscript plotCoverage.R tmsp.csv cebpa.csv output_dir\n")
     cat("\nGenerates coverage plot PDFs from CSV files\n")
     cat("Output: One PDF per sample with TMSP (5 pages) and CEBPA coverage\n")
+    cat("\nEach plot includes:\n")
+    cat("  - Coverage (log scale, dark blue) with UCL/LCL (yellow)\n")
+    cat("  - Z-score subplot (pink)\n")
+    cat("  - Ratio subplot (purple)\n")
     quit(status = 1)
   }
 
