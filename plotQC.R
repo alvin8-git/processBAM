@@ -44,15 +44,28 @@ GENE_EXONS <- list(
 )
 
 # =============================================================================
-# Color functions for coverage proportion (red=0 to white=1)
+# Color functions for coverage proportion
 # =============================================================================
-# Color scale: F8696B (red) -> FCFCFF (white)
+# Color scale: dark red (0) -> medium red (0.5) -> white (1)
+# 0.0 = dark red (bad coverage)
+# 0.5 = medium red
+# 1.0 = white (good coverage)
 coverage_color <- function(prop) {
-  prop <- pmax(0, pmin(1, prop))  # Clamp to 0-1
-  # Interpolate between red (0) and white (1)
-  r <- 0xF8 + (0xFC - 0xF8) * prop
-  g <- 0x69 + (0xFC - 0x69) * prop
-  b <- 0x6B + (0xFF - 0x6B) * prop
+  prop <- max(0, min(1, prop))  # Clamp to 0-1 (single value)
+  # Use a gradient from dark red (139,0,0) to salmon (248,105,107) to white (255,255,255)
+  if (prop <= 0.5) {
+    # 0 to 0.5: dark red to salmon
+    t <- prop * 2  # Scale 0-0.5 to 0-1
+    r <- 139 + (248 - 139) * t
+    g <- 0 + (105 - 0) * t
+    b <- 0 + (107 - 0) * t
+  } else {
+    # 0.5 to 1: salmon to white
+    t <- (prop - 0.5) * 2  # Scale 0.5-1 to 0-1
+    r <- 248 + (255 - 248) * t
+    g <- 105 + (255 - 105) * t
+    b <- 107 + (255 - 107) * t
+  }
   rgb(r/255, g/255, b/255)
 }
 
@@ -162,7 +175,7 @@ aggregate_mosdepth <- function(mosdepth_df, sample_idx) {
 # =============================================================================
 # Draw Page 1: Picard Statistics
 # =============================================================================
-draw_page1 <- function(metrics, sample_name) {
+draw_page1 <- function(metrics, sample_name, total_targeted_bases) {
   par(mar = c(1, 1, 2, 1))
   plot.new()
 
@@ -193,13 +206,16 @@ draw_page1 <- function(metrics, sample_name) {
   tv <- as.numeric(metrics$Transversions)
   titv <- as.numeric(metrics[["Ti/Tv"]])
 
-  # Text positions
+  # Calculate Mean Coverage = PF_ALIGNED_BASES / total_targeted_bases
+  mean_coverage <- aligned_bases / total_targeted_bases
+
+  # Text positions - values right-aligned closer to units
   y_start <- 0.92
   y_step <- 0.028
   x_label <- 0.08
-  x_value <- 0.35
-  x_unit <- 0.52
-  x_pct <- 0.62
+  x_value <- 0.48    # Moved right (was 0.35) - right edge of value
+  x_unit <- 0.50     # Unit position (was 0.52)
+  x_pct <- 0.65      # Percentage position (was 0.62)
 
   y <- y_start
 
@@ -251,9 +267,9 @@ draw_page1 <- function(metrics, sample_name) {
   text(0.05, y, "Alignment Statistics", cex = 1.2, font = 2, adj = 0)
   y <- y - y_step * 1.5
 
-  # Mean coverage (will be calculated from mosdepth)
+  # Mean coverage = PF_ALIGNED_BASES / total_targeted_bases
   text(x_label, y, "Mean Coverage", adj = 0)
-  text(x_value, y, "-", adj = 1)  # Placeholder
+  text(x_value, y, sprintf("%.0f", mean_coverage), adj = 1)
   text(x_unit, y, "X", adj = 0)
   y <- y - y_step * 1.5
 
@@ -435,11 +451,14 @@ generate_qc_pdf <- function(picard_df, mosdepth_df, sample_idx, sample_name, out
   # Aggregate mosdepth by gene
   gene_summary <- aggregate_mosdepth(mosdepth_df, sample_idx)
 
+  # Get total targeted bases from Overall row (last row of gene_summary)
+  total_targeted_bases <- gene_summary$bases[nrow(gene_summary)]
+
   # Create PDF
   pdf(pdf_file, width = 8.5, height = 11, paper = "letter")
 
   # Page 1: Picard statistics
-  draw_page1(metrics, sample_name)
+  draw_page1(metrics, sample_name, total_targeted_bases)
 
   # Page 2: Gene coverage table
   draw_page2(gene_summary, sample_name)
