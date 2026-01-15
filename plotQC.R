@@ -76,9 +76,9 @@ format_number <- function(x) {
   format(round(x), big.mark = ",", scientific = FALSE)
 }
 
-# Format percentage
+# Format percentage with brackets
 format_pct <- function(x) {
-  sprintf("%.1f%%", x * 100)
+  sprintf("(%.1f%%)", x * 100)
 }
 
 # =============================================================================
@@ -104,13 +104,20 @@ parse_picard <- function(picard_df, sample_idx) {
 aggregate_mosdepth <- function(mosdepth_df, sample_idx) {
   # Columns: Chr, Start, End, Gene, Transcript, Exon, then for each sample:
   # Coverage, 1X, 100X, 250X, 1000X (5 columns per sample)
+  #
+  # Proportions are calculated as per TSMPQCtemplate:
+  # - T (Actual Bases) = 1X value (bases with at least 1X coverage)
+  # - AA (1X prop) = 1X / 1X = 1.0 (always)
+  # - AB (100X prop) = 100X / 1X
+  # - AC (250X prop) = 250X / 1X
+  # - AD (1000X prop) = 1000X / 1X
 
   col_start <- 7 + (sample_idx - 1) * 5
 
   # Extract sample data
   data <- data.frame(
     gene = mosdepth_df[, 4],
-    bases = mosdepth_df[, 3] - mosdepth_df[, 2],  # End - Start = bases
+    exon_bases = mosdepth_df[, 3] - mosdepth_df[, 2],  # End - Start (for coverage calc)
     coverage = as.numeric(mosdepth_df[, col_start]),
     x1 = as.numeric(mosdepth_df[, col_start + 1]),
     x100 = as.numeric(mosdepth_df[, col_start + 2]),
@@ -135,37 +142,39 @@ aggregate_mosdepth <- function(mosdepth_df, sample_idx) {
   for (g in TMSP_GENES) {
     gene_data <- data[data$gene == g, ]
     if (nrow(gene_data) > 0) {
-      total_bases <- sum(gene_data$bases)
-      total_cov <- sum(gene_data$coverage * gene_data$bases)
-      total_x1 <- sum(gene_data$x1)
+      total_exon_bases <- sum(gene_data$exon_bases)
+      total_cov <- sum(gene_data$coverage * gene_data$exon_bases)
+      total_x1 <- sum(gene_data$x1)      # Actual Bases (T)
       total_x100 <- sum(gene_data$x100)
       total_x250 <- sum(gene_data$x250)
       total_x1000 <- sum(gene_data$x1000)
 
+      # Proportions use 1X (Actual Bases) as denominator, not exon_bases
       gene_summary <- rbind(gene_summary, data.frame(
         gene = g,
         exons = GENE_EXONS[[g]],
-        bases = total_bases,
-        coverage = total_cov / total_bases,  # Weighted average
-        x1 = total_x1 / total_bases,
-        x100 = total_x100 / total_bases,
-        x250 = total_x250 / total_bases,
-        x1000 = total_x1000 / total_bases,
+        bases = total_x1,  # Actual Bases = 1X value
+        coverage = total_cov / total_exon_bases,  # Weighted average coverage
+        x1 = if (total_x1 > 0) total_x1 / total_x1 else 0,      # Always 1.0
+        x100 = if (total_x1 > 0) total_x100 / total_x1 else 0,
+        x250 = if (total_x1 > 0) total_x250 / total_x1 else 0,
+        x1000 = if (total_x1 > 0) total_x1000 / total_x1 else 0,
         stringsAsFactors = FALSE
       ))
     }
   }
 
   # Add overall row
+  total_all_x1 <- sum(data$x1)
   overall <- data.frame(
     gene = "Overall",
     exons = "",
-    bases = sum(gene_summary$bases),
-    coverage = sum(gene_summary$coverage * gene_summary$bases) / sum(gene_summary$bases),
-    x1 = sum(data$x1) / sum(data$bases),
-    x100 = sum(data$x100) / sum(data$bases),
-    x250 = sum(data$x250) / sum(data$bases),
-    x1000 = sum(data$x1000) / sum(data$bases),
+    bases = total_all_x1,  # Total Actual Bases
+    coverage = sum(data$coverage * data$exon_bases) / sum(data$exon_bases),
+    x1 = if (total_all_x1 > 0) total_all_x1 / total_all_x1 else 0,  # 1.0
+    x100 = if (total_all_x1 > 0) sum(data$x100) / total_all_x1 else 0,
+    x250 = if (total_all_x1 > 0) sum(data$x250) / total_all_x1 else 0,
+    x1000 = if (total_all_x1 > 0) sum(data$x1000) / total_all_x1 else 0,
     stringsAsFactors = FALSE
   )
 
@@ -211,7 +220,7 @@ draw_page1 <- function(metrics, sample_name, total_targeted_bases) {
 
   # Text positions - values right-aligned closer to units
   y_start <- 0.92
-  y_step <- 0.028
+  y_step <- 0.025    # Reduced from 0.028 to fit DNA substitutions section
   x_label <- 0.08
   x_value <- 0.48    # Moved right (was 0.35) - right edge of value
   x_unit <- 0.50     # Unit position (was 0.52)
