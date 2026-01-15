@@ -424,8 +424,8 @@ draw_page2 <- function(gene_summary, sample_name) {
            cols[prop_cols[j]] + 0.09, y + 0.01,
            col = coverage_color(prop_vals[j]), border = NA)
 
-      # Draw proportion text
-      text(cols[prop_cols[j]], y, format_pct(prop_vals[j]), cex = 0.6, adj = 0)
+      # Draw proportion as decimal (0.00 to 1.00) with 2 decimal places
+      text(cols[prop_cols[j]], y, sprintf("%.2f", prop_vals[j]), cex = 0.6, adj = 0)
     }
 
     # Draw horizontal line under Overall row
