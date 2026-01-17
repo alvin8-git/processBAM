@@ -1,0 +1,40 @@
+# =============================================================================
+# docker-compose.yml for processBAM Pipeline
+# =============================================================================
+# Usage:
+#   1. Edit the volumes section below to point to your data
+#   2. Run: docker-compose run --rm processbam
+#
+# Or with specific options:
+#   docker-compose run --rm processbam --status
+#   docker-compose run --rm processbam --qc --force
+# =============================================================================
+
+services:
+  processbam:
+    build: .
+    image: processbam:latest
+    container_name: processbam
+
+    volumes:
+      # Mount your Databases directory (read-only)
+      # Contains: WholeGenomeFASTA/, TMSPvcf/BEDfiles/
+      - ${DATABASES_PATH:-~/Databases}:/databases:ro
+
+      # Mount your analysis directory (read-write)
+      # Should contain: bam/, vcf/, cebpa/bam/ (optional)
+      - ${ANALYSIS_PATH:-.}:/data
+
+    working_dir: /data/bam
+
+    # Default command shows help
+    # Override with: docker-compose run --rm processbam [options]
+    command: ["--help"]
+
+    # Resource limits (adjust as needed)
+    deploy:
+      resources:
+        limits:
+          memory: 16G
+        reservations:
+          memory: 4G

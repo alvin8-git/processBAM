@@ -22,7 +22,27 @@ processBAM/
 ├── plotCoverage.R             # R script for coverage plot generation
 ├── generateQCreport.sh        # QC report generation wrapper
 ├── plotQC.R                   # R script for QC report generation
+├── Dockerfile                 # Docker container definition
+├── docker-compose.yml         # Docker Compose configuration
 └── README.md                  # This file
+```
+
+### Output Directory Structure
+
+After running the pipeline, the output directory will contain:
+
+```
+output/
+├── QCdata.xlsx                # QC metrics Excel file
+├── CoverageData.xlsx          # Coverage data Excel file
+├── pindel/                    # Pindel structural variant results
+│   ├── *.FLT3.pindel.vcf     # FLT3 breakpoint VCFs
+│   ├── *.CALR.pindel.vcf     # CALR breakpoint VCFs
+│   └── intermediate/          # Pindel intermediate files
+├── CoveragePlots/             # Coverage plot PDFs
+│   └── *_Coverage.pdf
+└── QCreports/                 # QC report PDFs
+    └── *_QC.pdf
 ```
 
 ## Prerequisites
@@ -56,7 +76,7 @@ These should be present in `$HOME/Databases/`:
 - `TMSPvcf/BEDfiles/TMSP.RefSeqexons.bed` - TMSP RefSeq exons
 - `TMSPvcf/BEDfiles/TSMP.UCSCexons.CEBPA.bed` - CEBPA exons BED
 
-### Conda Environment
+### Conda Environment (Native)
 
 The pipeline requires conda with a `base` environment containing the bioinformatics tools:
 
@@ -64,6 +84,33 @@ The pipeline requires conda with a `base` environment containing the bioinformat
 # Install conda environment with required tools
 conda create -n base samtools picard mosdepth pindel gatk
 ```
+
+### Docker (Recommended)
+
+A Docker container is provided with all tools pre-installed. This is the recommended way to run the pipeline.
+
+```bash
+# Build the Docker image
+cd ~/Shared/SCRIPTS/claude/processBAM
+docker build -t processbam:latest .
+
+# Run with docker-compose (recommended)
+cd /path/to/analysis
+DATABASES_PATH=~/Databases ANALYSIS_PATH=. docker-compose \
+    -f ~/Shared/SCRIPTS/claude/processBAM/docker-compose.yml \
+    run --rm processbam
+
+# Or run directly with docker
+docker run --rm \
+    -v ~/Databases:/databases:ro \
+    -v /path/to/analysis:/data \
+    -w /data/bam \
+    processbam:latest
+```
+
+**Docker volume mounts:**
+- `/databases` - Reference files (read-only): genome.fa, BED files
+- `/data` - Analysis directory (read-write): bam/, vcf/, output/
 
 ## Usage
 
@@ -177,12 +224,12 @@ Excel file with two worksheets:
 - Per-sample depth with cross-validation statistics
 - ~1,200 positions
 
-### Pindel Output
+### Pindel Output (`../output/pindel/`)
 
 Per-sample VCF files for structural variants:
 - `*.FLT3.pindel.vcf` - FLT3 breakpoints (chr13)
 - `*.CALR.pindel.vcf` - CALR breakpoints (chr19)
-- `pindel/` - Intermediate Pindel files
+- `intermediate/` - Intermediate Pindel files
 
 ### Coverage Plots (`*_Coverage.pdf`)
 
@@ -297,7 +344,7 @@ The following functions are built into the script (no external dependencies):
 The pipeline automatically detects completed stages:
 - Checks for `QCdata.xlsx` for QC stage
 - Checks for `CoverageData.xlsx` for coverage stage
-- Checks for `*.pindel.vcf` files for Pindel stage
+- Checks for `*.pindel.vcf` files in `../output/pindel/` for Pindel stage
 - Checks for `*_Coverage.pdf` files in `../output/CoveragePlots/` for Plots stage
 - Checks for `*_QC.pdf` files in `../output/QCreports/` for QC Reports stage
 
@@ -312,13 +359,25 @@ Use `--status` to view completion status, `--force` to re-run completed stages.
 
 ### Common Issues
 
+**Native installation:**
 1. **Conda not found**: Ensure conda is installed at `$HOME/Software/miniconda3/`
 2. **VCF not found**: QC stage requires matching VCF files in `../vcf/`
 3. **Missing tools**: Install required tools via conda: `conda install samtools picard mosdepth pindel`
 4. **openpyxl missing**: Run `pip install openpyxl`
 
+**Docker:**
+1. **Volume mount errors**: Ensure paths exist and have correct permissions
+2. **Memory issues**: Increase Docker memory limit (default 16GB recommended)
+3. **Database not found**: Mount your Databases directory to `/databases`
+
 ## Version History
 
+- v1.4 (2025-01): Docker support and output organization
+  - Added Docker container with all dependencies pre-installed
+  - Dockerfile and docker-compose.yml for containerized execution
+  - Reorganized Pindel output to `../output/pindel/` directory
+  - Environment variable support for configurable paths
+  - Docker mode auto-detection
 - v1.3 (2025-01): QC report generation
   - Added Stage 5: QC report PDFs (Picard + gene coverage)
   - R script for 2-page PDF generation with color-coded coverage table

@@ -149,11 +149,12 @@ aggregate_mosdepth <- function(mosdepth_df, sample_idx) {
       total_x250 <- sum(gene_data$x250)
       total_x1000 <- sum(gene_data$x1000)
 
-      # Proportions use 1X (Actual Bases) as denominator, not exon_bases
+      # Bases column = exon length (S column in TSMPQCtemplate)
+      # Proportions use 1X (Actual Bases / T column) as denominator
       gene_summary <- rbind(gene_summary, data.frame(
         gene = g,
         exons = GENE_EXONS[[g]],
-        bases = total_x1,  # Actual Bases = 1X value
+        bases = total_exon_bases,  # Exon length (S column), not 1X
         coverage = total_cov / total_exon_bases,  # Weighted average coverage
         x1 = if (total_x1 > 0) total_x1 / total_x1 else 0,      # Always 1.0
         x100 = if (total_x1 > 0) total_x100 / total_x1 else 0,
@@ -165,12 +166,15 @@ aggregate_mosdepth <- function(mosdepth_df, sample_idx) {
   }
 
   # Add overall row
-  total_all_x1 <- sum(data$x1)
+  # Per TSMPQCtemplate:
+  # - Overall Coverage (V56) = U56/T56 = sum(coverage*bases) / sum(1X)
+  # - Overall Bases (PRINT2) = T56 = sum(1X), NOT S56 (exon length)
+  total_all_x1 <- sum(data$x1)  # T56 equivalent (Actual Bases)
   overall <- data.frame(
     gene = "Overall",
     exons = "",
-    bases = total_all_x1,  # Total Actual Bases
-    coverage = sum(data$coverage * data$exon_bases) / sum(data$exon_bases),
+    bases = total_all_x1,  # T56 = Total Actual Bases (1X sum)
+    coverage = sum(data$coverage * data$exon_bases) / total_all_x1,  # U56/T56
     x1 = if (total_all_x1 > 0) total_all_x1 / total_all_x1 else 0,  # 1.0
     x100 = if (total_all_x1 > 0) sum(data$x100) / total_all_x1 else 0,
     x250 = if (total_all_x1 > 0) sum(data$x250) / total_all_x1 else 0,
@@ -219,7 +223,7 @@ draw_page1 <- function(metrics, sample_name, total_targeted_bases) {
   mean_coverage <- aligned_bases / total_targeted_bases
 
   # Text positions - values right-aligned closer to units
-  y_start <- 0.92
+  y_start <- 0.96  # Moved higher to reduce space above title
   y_step <- 0.025    # Reduced from 0.028 to fit DNA substitutions section
   x_label <- 0.08
   x_value <- 0.48    # Moved right (was 0.35) - right edge of value
@@ -395,8 +399,9 @@ draw_page2 <- function(gene_summary, sample_name) {
   y_header <- y_start
   y_step <- 0.0155  # Smaller step for 55 rows + header
 
-  # Draw header
-  text(0.60, y_header + 0.02, "Proportion of Bases Covered @", cex = 0.8, adj = 0.5)
+  # Draw header - "Proportion of Bases Covered @" centered above 1X, 100X, 250X, >1000X columns
+  # Columns 5-8 are at 0.54, 0.66, 0.78, 0.90 - center is (0.54 + 0.90)/2 = 0.72
+  text(0.72, y_header + 0.02, "Proportion of Bases Covered @", cex = 0.8, adj = 0.5)
   for (i in 1:length(headers)) {
     text(cols[i], y_header, headers[i], cex = 0.7, font = 2, adj = 0)
   }
@@ -437,8 +442,8 @@ draw_page2 <- function(gene_summary, sample_name) {
       text(cols[prop_cols[j]], y, sprintf("%.2f", prop_vals[j]), cex = 0.6, adj = 0)
     }
 
-    # Draw horizontal line under Overall row
-    if (g$gene == "Overall") {
+    # Draw horizontal line after ZRSR2 (last gene before Overall)
+    if (g$gene == "ZRSR2") {
       segments(0.03, y - 0.008, 0.97, y - 0.008, lwd = 0.5)
     }
 
@@ -460,8 +465,10 @@ generate_qc_pdf <- function(picard_df, mosdepth_df, sample_idx, sample_name, out
   # Aggregate mosdepth by gene
   gene_summary <- aggregate_mosdepth(mosdepth_df, sample_idx)
 
-  # Get total targeted bases from Overall row (last row of gene_summary)
-  total_targeted_bases <- gene_summary$bases[nrow(gene_summary)]
+  # Calculate total targeted bases (S56 = sum of exon lengths) for Mean Coverage
+  # Note: gene_summary$bases for Overall row is T56 (1X sum), not S56
+  # We need S56 for Mean Coverage calculation
+  total_targeted_bases <- sum(mosdepth_df[, 3] - mosdepth_df[, 2])  # Sum of (End - Start)
 
   # Create PDF
   pdf(pdf_file, width = 8.5, height = 11, paper = "letter")

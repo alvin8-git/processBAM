@@ -29,16 +29,22 @@ set -e  # Exit on error
 # =============================================================================
 
 # Get the directory where this script is located
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 
-# Reference files
-HG19="$HOME/Databases/WholeGenomeFASTA/genome.fa"
-BED_TMSP="$HOME/Databases/TMSPvcf/BEDfiles/TSMP.UCSCexons.NoZero.v2.bed"
-BED_TMSP_REFSEQ="$HOME/Databases/TMSPvcf/BEDfiles/TMSP.RefSeqexons.bed"
-BED_CEBNX="$HOME/Databases/TMSPvcf/BEDfiles/TSMP.UCSCexons.CEBPA.bed"
+# Reference files (can be overridden by environment variables for Docker)
+HG19="${HG19:-$HOME/Databases/WholeGenomeFASTA/genome.fa}"
+BED_TMSP="${BED_TMSP:-$HOME/Databases/TMSPvcf/BEDfiles/TSMP.UCSCexons.NoZero.v2.bed}"
+BED_TMSP_REFSEQ="${BED_TMSP_REFSEQ:-$HOME/Databases/TMSPvcf/BEDfiles/TMSP.RefSeqexons.bed}"
+BED_CEBNX="${BED_CEBNX:-$HOME/Databases/TMSPvcf/BEDfiles/TSMP.UCSCexons.CEBPA.bed}"
 
-# Conda environment
-CONDA_PATH="$HOME/Software/miniconda3/etc/profile.d/conda.sh"
+# Conda environment (not needed in Docker)
+CONDA_PATH="${CONDA_PATH:-$HOME/Software/miniconda3/etc/profile.d/conda.sh}"
+
+# Docker mode detection
+DOCKER_MODE="${DOCKER_MODE:-false}"
+if [ -f /.dockerenv ]; then
+    DOCKER_MODE=true
+fi
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -53,6 +59,12 @@ log_error() {
 }
 
 activate_conda() {
+    # Skip conda in Docker mode - tools are already in PATH
+    if [ "$DOCKER_MODE" = true ]; then
+        log_info "Docker mode detected, skipping conda activation"
+        return 0
+    fi
+
     if [ -f "$CONDA_PATH" ]; then
         source "$CONDA_PATH"
         conda activate base
@@ -492,18 +504,20 @@ generate_coverage_data() {
 # PINDEL BREAKPOINT DETECTION
 # =============================================================================
 # Runs Pindel for FLT3 (chr13) and CALR (chr19) genes
-# Output: *.FLT3.pindel.vcf and *.CALR.pindel.vcf
+# Output: ../output/pindel/*.FLT3.pindel.vcf and *.CALR.pindel.vcf
+#         ../output/pindel/intermediate/ - intermediate files
 
 run_pindel_flt3() {
     local sample="$1"
     local sample_name=$(basename "$sample" .bam)
+    local output_dir="../output/pindel"
 
-    [ -f "$sample_name.FLT3.pindel.vcf" ] && return 0
+    [ -f "$output_dir/$sample_name.FLT3.pindel.vcf" ] && return 0
 
     log_info "Running Pindel FLT3 for $sample_name..."
 
-    # Create pindel directory
-    [ ! -d ./pindel ] && mkdir -p ./pindel
+    # Create output directory
+    mkdir -p "$output_dir/intermediate"
 
     # Create config file
     echo "$sample_name.bam 400 $sample_name-FLT3" > "$sample_name-FLT3.bam_config.txt"
@@ -519,25 +533,26 @@ run_pindel_flt3() {
     pindel2vcf -P "$sample_name-FLT3" \
                -r "$HG19" \
                -d 20190531 \
-               -v "$sample_name.FLT3.pindel.vcf" \
+               -v "$output_dir/$sample_name.FLT3.pindel.vcf" \
                -R NCBI36 \
                -is 10 \
                -e 25
 
-    # Move intermediate files
-    mv "$sample_name-FLT3"* pindel/
+    # Move intermediate files to output
+    mv "$sample_name-FLT3"* "$output_dir/intermediate/"
 }
 
 run_pindel_calr() {
     local sample="$1"
     local sample_name=$(basename "$sample" .bam)
+    local output_dir="../output/pindel"
 
-    [ -f "$sample_name.CALR.pindel.vcf" ] && return 0
+    [ -f "$output_dir/$sample_name.CALR.pindel.vcf" ] && return 0
 
     log_info "Running Pindel CALR for $sample_name..."
 
-    # Create pindel directory
-    [ ! -d ./pindel ] && mkdir -p ./pindel
+    # Create output directory
+    mkdir -p "$output_dir/intermediate"
 
     # Create config file
     echo "$sample_name.bam 400 $sample_name-CALR" > "$sample_name-CALR.bam_config.txt"
@@ -553,13 +568,13 @@ run_pindel_calr() {
     pindel2vcf -P "$sample_name-CALR" \
                -r "$HG19" \
                -d 20190531 \
-               -v "$sample_name.CALR.pindel.vcf" \
+               -v "$output_dir/$sample_name.CALR.pindel.vcf" \
                -R NCBI36 \
                -is 25 \
                -e 25
 
-    # Move intermediate files
-    mv "$sample_name-CALR"* pindel/
+    # Move intermediate files to output
+    mv "$sample_name-CALR"* "$output_dir/intermediate/"
 }
 
 # Export functions for parallel
@@ -664,8 +679,9 @@ check_coverage_complete() {
 }
 
 check_pindel_complete() {
-    local flt3_count=$(ls *.FLT3.pindel.vcf 2>/dev/null | wc -l)
-    local calr_count=$(ls *.CALR.pindel.vcf 2>/dev/null | wc -l)
+    local pindel_dir="../output/pindel"
+    local flt3_count=$(ls "$pindel_dir"/*.FLT3.pindel.vcf 2>/dev/null | wc -l)
+    local calr_count=$(ls "$pindel_dir"/*.CALR.pindel.vcf 2>/dev/null | wc -l)
     local bam_count=$(ls *.bam 2>/dev/null | wc -l)
 
     [ "$flt3_count" -eq "$bam_count" ] && [ "$calr_count" -eq "$bam_count" ] && return 0
@@ -706,8 +722,8 @@ show_status() {
     fi
 
     if check_pindel_complete; then
-        local vcf_count=$(ls *.pindel.vcf 2>/dev/null | wc -l)
-        echo "  [✓] Pindel analysis complete ($vcf_count VCF files)"
+        local vcf_count=$(ls ../output/pindel/*.pindel.vcf 2>/dev/null | wc -l)
+        echo "  [✓] Pindel analysis complete ($vcf_count VCF files in ../output/pindel/)"
     else
         echo "  [ ] Pindel analysis not complete"
     fi
