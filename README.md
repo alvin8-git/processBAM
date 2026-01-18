@@ -2,6 +2,21 @@
 
 A fully self-contained BAM processing pipeline for TMSP and CEBPA/CEBNX panels. This pipeline automates QC statistics, coverage depth calculation, and Pindel breakpoint analysis for FLT3 and CALR genes.
 
+## Installation
+
+### Clone the Repository
+
+```bash
+# Clone via HTTPS
+git clone https://github.com/alvin8-git/processBAM.git
+
+# Or clone via SSH
+git clone git@github.com:alvin8-git/processBAM.git
+
+# Navigate to the directory
+cd processBAM
+```
+
 ## Overview
 
 This pipeline:
@@ -91,13 +106,13 @@ A Docker container is provided with all tools pre-installed. This is the recomme
 
 ```bash
 # Build the Docker image
-cd ~/Shared/SCRIPTS/claude/processBAM
+cd processBAM
 docker build -t processbam:latest .
 
 # Run with docker-compose (recommended)
 cd /path/to/analysis
 DATABASES_PATH=~/Databases ANALYSIS_PATH=. docker-compose \
-    -f ~/Shared/SCRIPTS/claude/processBAM/docker-compose.yml \
+    -f ~/path/to/processBAM/docker-compose.yml \
     run --rm processbam
 
 # Or run directly with docker
@@ -106,6 +121,25 @@ docker run --rm \
     -v /path/to/analysis:/data \
     -w /data/bam \
     processbam:latest
+```
+
+**Enter the container interactively:**
+
+```bash
+# Start an interactive shell inside the container
+docker run --rm -it \
+    -v ~/Databases:/databases:ro \
+    -v /path/to/analysis:/data \
+    -w /data/bam \
+    --entrypoint bash \
+    processbam:latest
+
+# Once inside the container, you can run commands directly:
+samtools --version
+picard --version
+mosdepth --version
+pindel
+/scripts/processBAM.sh --help
 ```
 
 **Docker volume mounts:**
