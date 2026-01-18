@@ -70,14 +70,16 @@ coverage_color <- function(prop) {
 }
 
 # =============================================================================
-# Format large numbers with commas
+# Format large numbers with commas (handles NA/NaN/Inf)
 # =============================================================================
 format_number <- function(x) {
+  if (is.na(x) || is.nan(x) || is.infinite(x) || length(x) == 0) return("N/A")
   format(round(x), big.mark = ",", scientific = FALSE)
 }
 
-# Format percentage with brackets
+# Format percentage with brackets (handles NA/NaN/Inf)
 format_pct <- function(x) {
+  if (is.na(x) || is.nan(x) || is.infinite(x) || length(x) == 0) return("")
   sprintf("(%.1f%%)", x * 100)
 }
 
@@ -195,29 +197,36 @@ draw_page1 <- function(metrics, sample_name, total_targeted_bases) {
   # Title
   title(main = paste(sample_name, "- QC Report"), cex.main = 1.5, font.main = 2)
 
-  # Calculate derived values
-  total_reads <- as.numeric(metrics$TOTAL_READS)
-  r1_reads <- as.numeric(metrics$TOTAL_READS_R1)
-  r2_reads <- as.numeric(metrics$TOTAL_READS_R2)
-  read_length <- as.numeric(metrics$READ_LENGTH)
-  total_bases <- as.numeric(metrics$TOTAL_BASES)
-  q20_bases <- as.numeric(metrics$Q20_BASES)
-  q30_bases <- as.numeric(metrics$Q30_BASES)
-  aligned_reads <- as.numeric(metrics$PF_READS_ALIGNED)
-  aligned_r1 <- as.numeric(metrics$PF_READS_ALIGNED_R1)
-  aligned_r2 <- as.numeric(metrics$PF_READS_ALIGNED_R2)
-  aligned_bases <- as.numeric(metrics$PF_ALIGNED_BASES)
-  aligned_bases_r1 <- as.numeric(metrics$PF_ALIGNED_BASES_R1)
-  aligned_bases_r2 <- as.numeric(metrics$PF_ALIGNED_BASES_R2)
-  variants <- as.numeric(metrics$Variants)
-  snps <- as.numeric(metrics$SNPs)
-  insertions <- as.numeric(metrics$Insertions)
-  deletions <- as.numeric(metrics$Deletions)
-  het <- as.numeric(metrics$Heterozygous)
-  hom <- as.numeric(metrics$Homozygous)
-  ti <- as.numeric(metrics$Transitions)
-  tv <- as.numeric(metrics$Transversions)
-  titv <- as.numeric(metrics[["Ti/Tv"]])
+  # Helper to safely extract numeric values (returns 0 if missing/NA)
+  safe_num <- function(x) {
+    val <- as.numeric(x)
+    if (length(val) == 0 || is.na(val)) return(0)
+    return(val)
+  }
+
+  # Calculate derived values (with safe defaults for missing fields)
+  total_reads <- safe_num(metrics$TOTAL_READS)
+  r1_reads <- safe_num(metrics$TOTAL_READS_R1)
+  r2_reads <- safe_num(metrics$TOTAL_READS_R2)
+  read_length <- safe_num(metrics$READ_LENGTH)
+  total_bases <- safe_num(metrics$TOTAL_BASES)
+  q20_bases <- safe_num(metrics$Q20_BASES)
+  q30_bases <- safe_num(metrics$Q30_BASES)
+  aligned_reads <- safe_num(metrics$PF_READS_ALIGNED)
+  aligned_r1 <- safe_num(metrics$PF_READS_ALIGNED_R1)
+  aligned_r2 <- safe_num(metrics$PF_READS_ALIGNED_R2)
+  aligned_bases <- safe_num(metrics$PF_ALIGNED_BASES)
+  aligned_bases_r1 <- safe_num(metrics$PF_ALIGNED_BASES_R1)
+  aligned_bases_r2 <- safe_num(metrics$PF_ALIGNED_BASES_R2)
+  variants <- safe_num(metrics$Variants)
+  snps <- safe_num(metrics$SNPs)
+  insertions <- safe_num(metrics$Insertions)
+  deletions <- safe_num(metrics$Deletions)
+  het <- safe_num(metrics$Heterozygous)
+  hom <- safe_num(metrics$Homozygous)
+  ti <- safe_num(metrics$Transitions)
+  tv <- safe_num(metrics$Transversions)
+  titv <- safe_num(metrics[["Ti/Tv"]])
 
   # Calculate Mean Coverage = PF_ALIGNED_BASES / total_targeted_bases
   mean_coverage <- aligned_bases / total_targeted_bases
@@ -361,7 +370,8 @@ draw_page1 <- function(metrics, sample_name, total_targeted_bases) {
   text(x_pct, y, format_pct(hom / variants), adj = 0)
   y <- y - y_step
   text(x_label, y, "Het/Hom ratio", adj = 0)
-  text(x_value, y, sprintf("%.2f", het / hom), adj = 1)
+  het_hom_ratio <- if (hom > 0) het / hom else NA
+  text(x_value, y, if (is.na(het_hom_ratio)) "N/A" else sprintf("%.2f", het_hom_ratio), adj = 1)
   y <- y - y_step * 1.5
 
   # DNA substitutions
@@ -378,7 +388,7 @@ draw_page1 <- function(metrics, sample_name, total_targeted_bases) {
   text(x_pct, y, format_pct(tv / snps), adj = 0)
   y <- y - y_step
   text(x_label, y, "Ti/Tv ratio", adj = 0)
-  text(x_value, y, sprintf("%.2f", titv), adj = 1)
+  text(x_value, y, if (is.na(titv) || is.nan(titv)) "N/A" else sprintf("%.2f", titv), adj = 1)
 }
 
 # =============================================================================
