@@ -49,6 +49,16 @@ ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
 # =============================================================================
+# Set pipeline environment variables (for both entrypoint and interactive use)
+# =============================================================================
+ENV DOCKER_MODE=true
+ENV SCRIPT_DIR=/scripts
+ENV HG19=/databases/WholeGenomeFASTA/genome.fa
+ENV BED_TMSP=/databases/TMSPvcf/BEDfiles/TSMP.UCSCexons.NoZero.v2.bed
+ENV BED_TMSP_REFSEQ=/databases/TMSPvcf/BEDfiles/TMSP.RefSeqexons.bed
+ENV BED_CEBNX=/databases/TMSPvcf/BEDfiles/TSMP.UCSCexons.CEBPA.bed
+
+# =============================================================================
 # Install bioinformatics tools via conda/mamba
 # =============================================================================
 # Install tools in stages to avoid version conflicts
