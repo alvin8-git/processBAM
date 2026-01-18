@@ -203,12 +203,15 @@ run_picard_qc() {
     [ -f "$sample_name.metrics.txt" ] || \
     (
         echo "$sample_name" > "$sample_name.metrics.txt"
-        awk '{if($1!~/^\#/)print}' "$sample_name.quality.txt" | transpose -t >> "$sample_name.metrics.txt"
-        awk '{if($1!~/^\#/)print}' "$sample_name.align.txt" | transpose -t >> "$sample_name.metrics.txt"
-        gatk3 -T VariantEval \
-            -R "$HG19" \
-            --eval "../vcf/$sample_name.vcf" \
-            | awk -F"\t" '{if($1~/^(TiTv|Variant|Count)/)print}' >> "$sample_name.metrics.txt"
+        awk '{if($1!~/\#/)print}' "$sample_name.quality.txt" | transpose -t >> "$sample_name.metrics.txt"
+        awk '{if($1!~/\#/)print}' "$sample_name.align.txt" | transpose -t >> "$sample_name.metrics.txt"
+        # GATK3 VariantEval - optional (may not be available in lite version)
+        if [ -f "../vcf/$sample_name.vcf" ]; then
+            gatk3 -T VariantEval \
+                -R "$HG19" \
+                --eval "../vcf/$sample_name.vcf" \
+                2>/dev/null | awk -F"\t" '{if($1~/^(TiTv|Variant|Count)/)print}' >> "$sample_name.metrics.txt" || true
+        fi
     )
 
     # Select required fields
@@ -586,11 +589,11 @@ run_pindel_analysis() {
 
     # Run FLT3 Pindel in parallel
     log_info "################# PINDEL FOR FLT3 #########################"
-    parallel --memsuspend 3G "run_pindel_flt3 {}" ::: *.bam
+    parallel "run_pindel_flt3 {}" ::: *.bam
 
     # Run CALR Pindel in parallel
     log_info "################# PINDEL FOR CALR #########################"
-    parallel --memsuspend 3G "run_pindel_calr {}" ::: *.bam
+    parallel "run_pindel_calr {}" ::: *.bam
 
     log_info "Pindel analysis complete"
 }
