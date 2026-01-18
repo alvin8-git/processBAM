@@ -75,7 +75,7 @@ RUN mamba install -y -c bioconda -c conda-forge \
 RUN mkdir -p /opt/gatk3 && \
     wget -q https://storage.googleapis.com/gatk-software/package-archive/gatk/GenomeAnalysisTK-3.8-1-0-gf15c1c3ef.tar.bz2 \
     -O /tmp/gatk3.tar.bz2 && \
-    tar -xjf /tmp/gatk3.tar.bz2 -C /opt/gatk3 --strip-components=1 && \
+    tar -xjf /tmp/gatk3.tar.bz2 -C /opt/gatk3 --strip-components=1 --no-same-owner && \
     rm /tmp/gatk3.tar.bz2 && \
     echo '#!/bin/bash' > /usr/local/bin/gatk3 && \
     echo 'java -jar /opt/gatk3/GenomeAnalysisTK.jar "$@"' >> /usr/local/bin/gatk3 && \
