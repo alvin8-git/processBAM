@@ -20,7 +20,7 @@ FROM condaforge/mambaforge:latest
 
 LABEL maintainer="Alvin Ng"
 LABEL description="processBAM pipeline for TMSP/CEBPA BAM processing"
-LABEL version="1.4"
+LABEL version="1.5"
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -33,16 +33,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     curl \
     ca-certificates \
-    parallel \
-    gawk \
+    mawk \
     rename \
     procps \
     gcc \
+    make \
     libc6-dev \
     locales \
     && rm -rf /var/lib/apt/lists/* \
     && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
-    && locale-gen
+    && locale-gen \
+    && update-alternatives --set awk /usr/bin/mawk
+
+# Install GNU Parallel (newer version with --memsuspend support)
+RUN wget -q https://ftpmirror.gnu.org/parallel/parallel-20211222.tar.bz2 -O /tmp/parallel.tar.bz2 && \
+    cd /tmp && tar -xjf parallel.tar.bz2 && \
+    cd parallel-20211222 && ./configure && make && make install && \
+    cd / && rm -rf /tmp/parallel*
 
 # Set locale environment
 ENV LANG=en_US.UTF-8
@@ -61,24 +68,24 @@ ENV BED_CEBNX=/databases/TMSPvcf/BEDfiles/TSMP.UCSCexons.CEBPA.bed
 # =============================================================================
 # Install bioinformatics tools via conda/mamba
 # =============================================================================
-# Install tools in stages to avoid version conflicts
+# Install specific versions matching local conda environment
 RUN mamba install -y -c bioconda -c conda-forge \
-    samtools \
-    mosdepth \
+    samtools=1.14 \
+    mosdepth=0.3.3 \
     pindel \
     python \
     openpyxl \
     r-base \
     && mamba clean -afy
 
-# Install Java tools with compatible openjdk
+# Install Java 8 (required for Picard 2.x and GATK3)
 RUN mamba install -y -c conda-forge \
-    openjdk=17 \
+    openjdk=8 \
     && mamba clean -afy
 
-# Install picard (uses openjdk from above)
+# Install Picard 2.26.10 (matching local version - Picard 3.x has different output format)
 RUN mamba install -y -c bioconda -c conda-forge \
-    picard \
+    picard=2.26.10 \
     && mamba clean -afy
 
 # Download and setup GATK3 manually (required for VariantEval)
@@ -92,10 +99,12 @@ RUN mkdir -p /opt/gatk3 && \
     chmod +x /usr/local/bin/gatk3
 
 # =============================================================================
-# Install transpose utility
+# Install transpose utility (use pre-compiled binary from local system)
 # =============================================================================
-COPY transpose.c /tmp/transpose.c
-RUN gcc -O2 -o /usr/local/bin/transpose /tmp/transpose.c && rm /tmp/transpose.c
+# Note: transpose.bin is the "Version 2.0 - Dr. Alex Sheppard" binary that
+# correctly handles empty lines in Picard output files
+COPY transpose.bin /usr/local/bin/transpose
+RUN chmod +x /usr/local/bin/transpose
 
 # =============================================================================
 # Create directories for mounted volumes
